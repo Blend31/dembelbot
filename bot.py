@@ -25,16 +25,18 @@ logger = logging.getLogger(__name__)
 RENDER_PORT = int(os.environ.get('PORT', 10000)) # Render выставляет PORT
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
+    def do_GET(self): # Например, 4 пробела отступа
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         self.wfile.write(b"Bot is alive!")
-        # logger.info("Health check request received and responded.") # Можно раскомментировать для отладки
-     def do_HEAD(self): # <--- ДОБАВЬТЕ ЭТО
+        # logger.info(f"Health check GET request received for path: {self.path} and responded.")
+
+    def do_HEAD(self): # ДОЛЖЕН ИМЕТЬ ТАКОЙ ЖЕ ОТСТУП, как do_GET (4 пробела)
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
+        # logger.info(f"Health check HEAD request received for path: {self.path} and responded.")
          
 def run_health_check_server():
     server_address = ('', RENDER_PORT) # Слушаем на всех интерфейсах на порту от Render
