@@ -525,33 +525,6 @@ def reschedule_daily_job(context: ContextTypes.DEFAULT_TYPE,
 
 def main():
     
-    persistence_file_path = "/opt/render/project/src/bot_data_persistence.pkl"
-    # или, если хотите протестировать /tmp/:
-    # persistence_file_path = "/tmp/bot_data_persistence.pkl"
-
-    # --- ВРЕМЕННЫЙ КОД ДЛЯ ПРОВЕРКИ/СОЗДАНИЯ PERSISTENCE ---
-    # (Используйте тот обновленный код, который я дал в предыдущем ответе,
-    #  который пытается создать валидный пустой pickle-файл, если файла нет или он нулевой)
-    import os
-    import pickle
-    # Вставьте сюда обновленный временный код, работающий с persistence_file_path
-    # Пример (сокращенный, используйте полную версию из прошлого ответа):
-    if not os.path.exists(persistence_file_path) or (os.path.exists(persistence_file_path) and os.path.getsize(persistence_file_path) == 0):
-        if os.path.exists(persistence_file_path): # если был нулевой, удаляем
-            os.remove(persistence_file_path)
-        logger.info(f"Файл {persistence_file_path} не найден или был нулевым. Создание нового валидного пустого файла.")
-        try:
-            empty_data = {"user_data": {}, "chat_data": {}, "bot_data": {}, "conversations": {}, "callback_persistence": None}
-            with open(persistence_file_path, "wb") as f:
-                pickle.dump(empty_data, f)
-            logger.info(f"Создан новый пустой, но валидный файл персистентности: {persistence_file_path}")
-        except Exception as e_create:
-            logger.error(f"КРИТИЧЕСКАЯ ОШИБКА: Не удалось создать файл персистентности {persistence_file_path}: {e_create}")
-            return # Выход, если не можем создать файл
-    else:
-        logger.info(f"Файл персистентности {persistence_file_path} найден и не нулевой.")
-    # --- КОНЕЦ ВРЕМЕННОГО КОДА ---
-
     try:
         BOT_TOKEN = os.getenv("BOT_TOKEN")
         if not BOT_TOKEN:
