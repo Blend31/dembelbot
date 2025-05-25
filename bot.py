@@ -144,9 +144,9 @@ def get_motivation(days_left, total_days=1825):
 
     if percent_left > 70:
         return random.choice(MOTIVATION_PHRASES["long"])
-    elif percent_left > 30:
+    elif percent_left > 40:
         return random.choice(MOTIVATION_PHRASES["medium"])
-    elif percent_left > 10:
+    elif percent_left > 20:
         return random.choice(MOTIVATION_PHRASES["short"])
     else:
         return random.choice(MOTIVATION_PHRASES["almost"])
@@ -168,15 +168,17 @@ def get_next_milestone(target_date, today):
     if days_left > 60:
         state_exams = target_date - timedelta(days=60)
         milestones.append(("ГОСЭКЗАМЕНЫ", (state_exams - today).days, 3))
-
+    if days_left > 20:
+        thesis_defense = target_date - timedelta(days=20)
+        milestones.append(("МЕЖДИСЦИПЛИНАРКА", (thesis_defense - today).days, 3))
     # Если до выпуска больше 30 дней, добавляем защиту диплома
-    if days_left > 30:
-        thesis_defense = target_date - timedelta(days=30)
+    if days_left > 10:
+        thesis_defense = target_date - timedelta(days=10)
         milestones.append(("ЗАЩИТА ДИПЛОМА", (thesis_defense - today).days, 3))
 
     # Если до выпуска больше 10 дней, добавляем последние приготовления
-    if days_left > 10:
-        final_prep = target_date - timedelta(days=10)
+    if days_left > 5:
+        final_prep = target_date - timedelta(days=5)
         milestones.append(("ПОСЛЕДНИЕ ПРИГОТОВЛЕНИЯ", (final_prep - today).days, 2))
 
     # Если до выпуска больше 1 дня, добавляем репетицию выпуска
@@ -284,11 +286,10 @@ async def calculate_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 estimated_course = 4
 
             response = (
-                f"⭐️ СВОДКА НА СЕГОДНЯ, КУРСАНТ! ⭐️\n\n"
+                f"⭐️ СВОДКА НА СЕГОДНЯ ⭐️\n\n"
                 f"ДО ВЫПУСКА: {days_left} ДНЕЙ\n"
                 f"{DIVIDER}\n"
                 f"ПРОГРЕСС ОБУЧЕНИЯ: {progress_bar}\n"
-                f"ПРЕДПОЛАГАЕМЫЙ КУРС: {estimated_course}\n"
                 f"{milestone_info}\n"
                 f"{DIVIDER}\n"
                 f"➤ {motivation}\n\n"
@@ -396,11 +397,10 @@ async def check_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             estimated_course = 4
 
         response = (
-            f"⭐️ ОБНОВЛЕННЫЕ ДАННЫЕ, КУРСАНТ! ⭐️\n\n"
+            f"⭐️ ОБНОВЛЕННЫЕ ДАННЫЕ ⭐️\n\n"
             f"ДО ВЫПУСКА: {days_left} ДНЕЙ\n"
             f"{DIVIDER}\n"
             f"ПРОГРЕСС ОБУЧЕНИЯ: {progress_bar}\n"
-            f"ПРЕДПОЛАГАЕМЫЙ КУРС: {estimated_course}\n"
             f"{milestone_info}\n"
             f"{DIVIDER}\n"
             f"➤ {motivation}\n\n"
@@ -524,8 +524,7 @@ def reschedule_daily_job(context: ContextTypes.DEFAULT_TYPE,
 
 
 def main():
-    # Определяем путь к файлу персистентности ОДИН РАЗ ВНАЧАЛЕ
-    # Используем абсолютный путь для надежности на сервере
+    
     persistence_file_path = "/opt/render/project/src/bot_data_persistence.pkl"
     # или, если хотите протестировать /tmp/:
     # persistence_file_path = "/tmp/bot_data_persistence.pkl"
