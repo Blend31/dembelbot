@@ -31,7 +31,11 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is alive!")
         # logger.info("Health check request received and responded.") # Можно раскомментировать для отладки
-
+     def do_HEAD(self): # <--- ДОБАВЬТЕ ЭТО
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+         
 def run_health_check_server():
     server_address = ('', RENDER_PORT) # Слушаем на всех интерфейсах на порту от Render
     try:
@@ -518,69 +522,52 @@ def reschedule_daily_job(context: ContextTypes.DEFAULT_TYPE,
 
 
 def main():
-     # --- ВРЕМЕННЫЙ КОД ДЛЯ ОЧИСТКИ PERSISTENCE ---
-    import os
-    import shutil # Для более надежного удаления/перемещения
+    # Определяем путь к файлу персистентности ОДИН РАЗ ВНАЧАЛЕ
+    # Используем абсолютный путь для надежности на сервере
     persistence_file_path = "/opt/render/project/src/bot_data_persistence.pkl"
-    backup_persistence_file_path = "/opt/render/project/src/bot_data_persistence.pkl.backup"
+    # или, если хотите протестировать /tmp/:
+    # persistence_file_path = "/tmp/bot_data_persistence.pkl"
 
-    if os.path.exists(persistence_file_path):
-        logger.info(f"Найден существующий файл персистентности: {persistence_file_path}")
+    # --- ВРЕМЕННЫЙ КОД ДЛЯ ПРОВЕРКИ/СОЗДАНИЯ PERSISTENCE ---
+    # (Используйте тот обновленный код, который я дал в предыдущем ответе,
+    #  который пытается создать валидный пустой pickle-файл, если файла нет или он нулевой)
+    import os
+    import pickle
+    # Вставьте сюда обновленный временный код, работающий с persistence_file_path
+    # Пример (сокращенный, используйте полную версию из прошлого ответа):
+    if not os.path.exists(persistence_file_path) or (os.path.exists(persistence_file_path) and os.path.getsize(persistence_file_path) == 0):
+        if os.path.exists(persistence_file_path): # если был нулевой, удаляем
+            os.remove(persistence_file_path)
+        logger.info(f"Файл {persistence_file_path} не найден или был нулевым. Создание нового валидного пустого файла.")
         try:
-            # Попробуем сначала переименовать, это безопаснее
-            if os.path.exists(backup_persistence_file_path):
-                os.remove(backup_persistence_file_path) # Удаляем старый бэкап, если есть
-                logger.info(f"Удален старый бэкап: {backup_persistence_file_path}")
-            shutil.move(persistence_file_path, backup_persistence_file_path)
-            logger.info(f"Файл персистентности перемещен в: {backup_persistence_file_path}")
-        except Exception as e_move:
-            logger.error(f"Не удалось переместить файл персистентности {persistence_file_path}: {e_move}. Попытка удаления...")
-            try:
-                os.remove(persistence_file_path)
-                logger.info(f"Файл персистентности {persistence_file_path} удален.")
-            except Exception as e_remove:
-                logger.error(f"Критическая ошибка: Не удалось удалить файл персистентности {persistence_file_path}: {e_remove}")
-                # Если даже удалить не можем, то с персистентностью будут проблемы
-                # Можно здесь даже завершить выполнение, если персистентность критична
-                # return
+            empty_data = {"user_data": {}, "chat_data": {}, "bot_data": {}, "conversations": {}, "callback_persistence": None}
+            with open(persistence_file_path, "wb") as f:
+                pickle.dump(empty_data, f)
+            logger.info(f"Создан новый пустой, но валидный файл персистентности: {persistence_file_path}")
+        except Exception as e_create:
+            logger.error(f"КРИТИЧЕСКАЯ ОШИБКА: Не удалось создать файл персистентности {persistence_file_path}: {e_create}")
+            return # Выход, если не можем создать файл
     else:
-        logger.info(f"Файл персистентности {persistence_file_path} не найден, будет создан новый.")
+        logger.info(f"Файл персистентности {persistence_file_path} найден и не нулевой.")
     # --- КОНЕЦ ВРЕМЕННОГО КОДА ---
+
     try:
-        # 1. Берём токен из переменных окружения
         BOT_TOKEN = os.getenv("BOT_TOKEN")
-        my_persistence = PicklePersistence(filepath=persistence_file_path)
-        # 2. Если переменная не задана — бросаем исключение
         if not BOT_TOKEN:
             logger.critical("Переменная окружения BOT_TOKEN не найдена!")
             raise RuntimeError("Переменная окружения BOT_TOKEN не найдена!")
 
-        # --- НОВЫЙ КОД: Запуск HTTP-сервера в отдельном потоке ---
         health_thread = threading.Thread(target=run_health_check_server, daemon=True)
         health_thread.start()
-        # --- КОНЕЦ НОВОГО КОДА ---
 
-        # 3. Создаём приложение с полученным токеном
-        # Для Render и бесплатных тарифов PicklePersistence может быть ненадежен из-за эфемерной файловой системы.
-        # Убедитесь, что путь для файла персистентности доступен для записи.
-        # Можно указать /tmp/bot_persistence.pkl или подобный путь, но он будет временным.
-        # Для простоты и избежания проблем с правами, можно начать без persistence или использовать
-        # простой файл в текущей директории, понимая, что он может быть утерян.
-        persistence_path = "bot_data_persistence.pkl" # Убедитесь, что Render имеет право писать сюда
-                                                    # или измените на /tmp/bot_data_persistence.pkl
-        try:
-            # Попытка создать файл, чтобы проверить права на запись (можно удалить эту проверку потом)
-            with open(persistence_path, "ab") as f: # 'ab' - append binary, создаст если нет
-                pass
-            logger.info(f"PicklePersistence будет использовать файл: {os.path.abspath(persistence_path)}")
-        except IOError as e:
-            logger.warning(f"Не удалось получить доступ к файлу для PicklePersistence '{persistence_path}': {e}. "
-                           "Данные могут не сохраняться между перезапусками. "
-                           "Попробуйте указать путь типа '/tmp/bot_data_persistence.pkl' в PicklePersistence.")
-            # Если нет прав на запись, лучше не использовать PicklePersistence или он не будет работать
-            # persistence = None # Как вариант, если запись невозможна
+        # Создаем объект PicklePersistence ОДИН РАЗ, используя определенный ранее путь
+        my_persistence = PicklePersistence(
+            filepath=persistence_file_path
+            # Если хотите протестировать отключение сохранения JobQueue:
+            # store_callback_data=False
+        )
+        logger.info(f"PicklePersistence инициализирован с файлом: {persistence_file_path}")
 
-        my_persistence = PicklePersistence(filepath=persistence_path)
 
         application = (
             ApplicationBuilder()
@@ -596,28 +583,25 @@ def main():
                 MAIN_MENU: [
                     MessageHandler(filters.Regex('^📊 ОБНОВИТЬ ДАННЫЕ$') | filters.Command("check"), check_days),
                     MessageHandler(filters.Regex('^🔄 ИЗМЕНИТЬ ДАТУ$'), reset),
-                    CommandHandler("reset", reset), # Добавим /reset сюда тоже для прямого вызова
+                    CommandHandler("reset", reset),
                 ],
             },
             fallbacks=[CommandHandler("cancel", cancel)],
-            name="graduation_counter_conversation", # Имя для ConversationHandler при использовании persistence
-            persistent=True # Включаем персистентность для ConversationHandler
+            name="graduation_counter_conversation",
+            persistent=True
         )
 
         application.add_handler(conv_handler)
-        # Можно добавить простой обработчик неизвестных команд вне диалога
+
         async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Извините, я не понимаю эту команду. Используйте /start")
         application.add_handler(MessageHandler(filters.COMMAND, unknown))
-
 
         logger.info("Бот запускается...")
         application.run_polling()
 
     except Exception as e:
         logger.critical(f"Критическая ошибка при запуске или работе бота: {e}", exc_info=True)
-        # Здесь можно добавить код для отправки уведомления администратору, если это необходимо
-
 
 if __name__ == "__main__":
     main()
