@@ -524,6 +524,7 @@ def reschedule_daily_job(context: ContextTypes.DEFAULT_TYPE,
 
 
 def main():
+    persistence_file_path = "/opt/render/project/src/bot_data_persistence.pkl"
     
     try:
         BOT_TOKEN = os.getenv("BOT_TOKEN")
