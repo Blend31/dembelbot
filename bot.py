@@ -518,10 +518,38 @@ def reschedule_daily_job(context: ContextTypes.DEFAULT_TYPE,
 
 
 def main():
+     # --- ВРЕМЕННЫЙ КОД ДЛЯ ОЧИСТКИ PERSISTENCE ---
+    import os
+    import shutil # Для более надежного удаления/перемещения
+    persistence_file_path = "/opt/render/project/src/bot_data_persistence.pkl"
+    backup_persistence_file_path = "/opt/render/project/src/bot_data_persistence.pkl.backup"
+
+    if os.path.exists(persistence_file_path):
+        logger.info(f"Найден существующий файл персистентности: {persistence_file_path}")
+        try:
+            # Попробуем сначала переименовать, это безопаснее
+            if os.path.exists(backup_persistence_file_path):
+                os.remove(backup_persistence_file_path) # Удаляем старый бэкап, если есть
+                logger.info(f"Удален старый бэкап: {backup_persistence_file_path}")
+            shutil.move(persistence_file_path, backup_persistence_file_path)
+            logger.info(f"Файл персистентности перемещен в: {backup_persistence_file_path}")
+        except Exception as e_move:
+            logger.error(f"Не удалось переместить файл персистентности {persistence_file_path}: {e_move}. Попытка удаления...")
+            try:
+                os.remove(persistence_file_path)
+                logger.info(f"Файл персистентности {persistence_file_path} удален.")
+            except Exception as e_remove:
+                logger.error(f"Критическая ошибка: Не удалось удалить файл персистентности {persistence_file_path}: {e_remove}")
+                # Если даже удалить не можем, то с персистентностью будут проблемы
+                # Можно здесь даже завершить выполнение, если персистентность критична
+                # return
+    else:
+        logger.info(f"Файл персистентности {persistence_file_path} не найден, будет создан новый.")
+    # --- КОНЕЦ ВРЕМЕННОГО КОДА ---
     try:
         # 1. Берём токен из переменных окружения
         BOT_TOKEN = os.getenv("BOT_TOKEN")
-
+        my_persistence = PicklePersistence(filepath=persistence_file_path)
         # 2. Если переменная не задана — бросаем исключение
         if not BOT_TOKEN:
             logger.critical("Переменная окружения BOT_TOKEN не найдена!")
