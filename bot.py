@@ -448,10 +448,17 @@ def reschedule_daily_job(context: ContextTypes.DEFAULT_TYPE,
 
 def main():
     try:
-        # Ваш токен
-        application = ApplicationBuilder().token("7948697929:AAFdtBnoIau86KiaVzNQ0ODJmcMyslcLq0s").build()
+        # 1. Берём токен из переменных окружения
+        BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-        # Настройка обработчика разговора
+        # 2. Если переменная не задана — бросаем исключение
+        if not BOT_TOKEN:
+            raise RuntimeError("Переменная окружения BOT_TOKEN не найдена!")
+
+        # 3. Создаём приложение с полученным токеном
+        application = ApplicationBuilder().token(BOT_TOKEN).build()
+
+        # --- дальше всё как было ---
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler("start", start)],
             states={
@@ -468,9 +475,8 @@ def main():
         application.add_handler(conv_handler)
 
         print("Бот запущен! Нажмите Ctrl+C для остановки")
-
-        # Запуск бота
         application.run_polling()
+
     except Exception as e:
         print(f"Произошла ошибка: {e}")
 
