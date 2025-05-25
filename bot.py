@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import logging
-import os
 from datetime import datetime, timedelta
 import random
 from telegram import Update, ReplyKeyboardMarkup
@@ -123,18 +122,18 @@ def get_next_milestone(target_date, today):
         milestones.append(("100 ДНЕЙ ДО ВЫПУСКА", (hundred_days - today).days, 2))
 
     # Если до выпуска больше 60 дней, добавляем госэкзамены
-    if days_left > 60:
-        state_exams = target_date - timedelta(days=60)
+    if days_left > 40:
+        state_exams = target_date - timedelta(days=40)
         milestones.append(("ГОСЭКЗАМЕНЫ", (state_exams - today).days, 3))
 
     # Если до выпуска больше 30 дней, добавляем защиту диплома
-    if days_left > 30:
-        thesis_defense = target_date - timedelta(days=30)
+    if days_left > 10:
+        thesis_defense = target_date - timedelta(days=10)
         milestones.append(("ЗАЩИТА ДИПЛОМА", (thesis_defense - today).days, 3))
 
     # Если до выпуска больше 10 дней, добавляем последние приготовления
-    if days_left > 10:
-        final_prep = target_date - timedelta(days=10)
+    if days_left > 5:
+        final_prep = target_date - timedelta(days=5)
         milestones.append(("ПОСЛЕДНИЕ ПРИГОТОВЛЕНИЯ", (final_prep - today).days, 2))
 
     # Если до выпуска больше 1 дня, добавляем репетицию выпуска
@@ -158,7 +157,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(
         f"{ACADEMY_ASCII}\n"
         "ПРИВЕТСТВУЮ, КУРСАНТ! 🎖️\n\n"
-        "УЧЕБНАЯ ЧАСТЬ ЗАПРАШИВАЕТ ДАННЫЕ!\n\n"
         "УКАЖИТЕ ДАТУ ВЫПУСКА:\n\n"
         "ФОРМАТ: ДД.ММ.ГГГГ\n"
         "НАПРИМЕР: 25.06.2026"
@@ -237,11 +235,10 @@ async def calculate_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 estimated_course = 4
 
             response = (
-                f"⭐️ СВОДКА НА СЕГОДНЯ, КУРСАНТ! ⭐️\n\n"
+                f"⭐️ КУРСАНТ! ⭐️\n\n"
                 f"ДО ВЫПУСКА: {days_left} ДНЕЙ\n"
                 f"{DIVIDER}\n"
                 f"ПРОГРЕСС ОБУЧЕНИЯ: {progress_bar}\n"
-                f"ПРЕДПОЛАГАЕМЫЙ КУРС: {estimated_course}\n"
                 f"{milestone_info}\n"
                 f"{DIVIDER}\n"
                 f"➤ {motivation}\n\n"
@@ -256,7 +253,6 @@ async def calculate_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             elif 60 <= days_left <= 70:
                 response += f"\n\n📚 ГОСЭКЗАМЕНЫ ПРИБЛИЖАЮТСЯ! БУДЬТЕ ГОТОВЫ!"
 
-        # Добавляем кнопки (без учебного плана и традиций)
         keyboard = [
             ['📊 ОБНОВИТЬ ДАННЫЕ'],
             ['🔄 ИЗМЕНИТЬ ДАТУ']
@@ -342,7 +338,7 @@ async def check_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             estimated_course = 4
 
         response = (
-            f"⭐️ ОБНОВЛЕННЫЕ ДАННЫЕ, КУРСАНТ! ⭐️\n\n"
+            f"⭐️ ОБНОВЛЕННЫЕ ДАННЫЕ! ⭐️\n\n"
             f"ДО ВЫПУСКА: {days_left} ДНЕЙ\n"
             f"{DIVIDER}\n"
             f"ПРОГРЕСС ОБУЧЕНИЯ: {progress_bar}\n"
