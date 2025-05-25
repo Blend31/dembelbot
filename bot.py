@@ -1,17 +1,48 @@
 # -*- coding: utf-8 -*-
 import logging
+import os
 from datetime import datetime, timedelta
 import random
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, filters
-from datetime import datetime, time, timedelta
-from zoneinfo import ZoneInfo      # Python ≥3.9
+from datetime import datetime, time, timedelta # datetime уже импортирован
+from zoneinfo import ZoneInfo
 from telegram.ext import PicklePersistence
 
+# --- НОВЫЙ КОД ДЛЯ HEALTH CHECK ---
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+# --- КОНЕЦ НОВОГО КОДА ---
+
 # Настройка логирования
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
+# --- НОВЫЙ КОД: HTTP Handler и функция запуска сервера ---
+RENDER_PORT = int(os.environ.get('PORT', 10000)) # Render выставляет PORT
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+        # logger.info("Health check request received and responded.") # Можно раскомментировать для отладки
+
+def run_health_check_server():
+    server_address = ('', RENDER_PORT) # Слушаем на всех интерфейсах на порту от Render
+    try:
+        httpd = HTTPServer(server_address, HealthCheckHandler)
+        logger.info(f"Health check HTTP server_legacy_subtitles_settings_dialog_ok_button running on port {RENDER_PORT}")
+        httpd.serve_forever()
+    except Exception as e:
+        logger.error(f"Could not start or run health check server_legacy_subtitles_settings_dialog_ok_button: {e}", exc_info=True)
+# --- КОНЕЦ НОВОГО КОДА ---
+
+# ... (остальной ваш код без изменений: DATE_INPUT, MOTIVATION_PHRASES, и т.д.)
 # Состояния разговора
 DATE_INPUT, MAIN_MENU = range(2)
 
@@ -83,11 +114,16 @@ def create_progress_bar(days_left, total_days=1825):  # Примерно 5 ле�
     days_passed = total_days - days_left
     if days_passed > total_days:  # Для случая, если осталось меньше 0 дней
         days_passed = total_days
+    if days_passed < 0: # Если дата выпуска в далеком будущем, days_passed может быть < 0
+        days_passed = 0
 
-    percentage = int((days_passed / total_days) * 10)
+
+    percentage = int((days_passed / total_days) * 10) if total_days > 0 else 0
+
 
     progress = "▓" * percentage + "░" * (10 - percentage)
-    percent_num = int((days_passed / total_days) * 100)
+    percent_num = int((days_passed / total_days) * 100) if total_days > 0 else 0
+
 
     return f"[{progress}] {percent_num}%"
 
@@ -97,7 +133,8 @@ def get_motivation(days_left, total_days=1825):
     if days_left <= 0:
         return "ПОЗДРАВЛЯЮ, ЛЕЙТЕНАНТ! ЧЕСТЬ ИМЕЮ!"
 
-    percent_left = (days_left / total_days) * 100
+    percent_left = (days_left / total_days) * 100 if total_days > 0 else 100
+
 
     if percent_left > 70:
         return random.choice(MOTIVATION_PHRASES["long"])
@@ -122,18 +159,18 @@ def get_next_milestone(target_date, today):
         milestones.append(("100 ДНЕЙ ДО ВЫПУСКА", (hundred_days - today).days, 2))
 
     # Если до выпуска больше 60 дней, добавляем госэкзамены
-    if days_left > 40:
-        state_exams = target_date - timedelta(days=40)
+    if days_left > 60:
+        state_exams = target_date - timedelta(days=60)
         milestones.append(("ГОСЭКЗАМЕНЫ", (state_exams - today).days, 3))
 
     # Если до выпуска больше 30 дней, добавляем защиту диплома
-    if days_left > 10:
-        thesis_defense = target_date - timedelta(days=10)
+    if days_left > 30:
+        thesis_defense = target_date - timedelta(days=30)
         milestones.append(("ЗАЩИТА ДИПЛОМА", (thesis_defense - today).days, 3))
 
     # Если до выпуска больше 10 дней, добавляем последние приготовления
-    if days_left > 5:
-        final_prep = target_date - timedelta(days=5)
+    if days_left > 10:
+        final_prep = target_date - timedelta(days=10)
         milestones.append(("ПОСЛЕДНИЕ ПРИГОТОВЛЕНИЯ", (final_prep - today).days, 2))
 
     # Если до выпуска больше 1 дня, добавляем репетицию выпуска
@@ -151,12 +188,13 @@ def get_next_milestone(target_date, today):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало разговора и запрос даты."""
-    print(f"Получена команда /start от пользователя {update.effective_user.id}")
+    logger.info(f"Получена команда /start от пользователя {update.effective_user.id}")
 
     # Отправляем ASCII-арт с инструкциями в одном сообщении
     await update.message.reply_text(
         f"{ACADEMY_ASCII}\n"
         "ПРИВЕТСТВУЮ, КУРСАНТ! 🎖️\n\n"
+        "УЧЕБНАЯ ЧАСТЬ ЗАПРАШИВАЕТ ДАННЫЕ!\n\n"
         "УКАЖИТЕ ДАТУ ВЫПУСКА:\n\n"
         "ФОРМАТ: ДД.ММ.ГГГГ\n"
         "НАПРИМЕР: 25.06.2026"
@@ -167,27 +205,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def calculate_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка введенной даты и расчет оставшихся дней."""
-    print(f"Получено сообщение с датой от пользователя {update.effective_user.id}: {update.message.text}")
+    logger.info(f"Получено сообщение с датой от пользователя {update.effective_user.id}: {update.message.text}")
 
     user_text = update.message.text
 
     try:
         # Парсим дату выпуска
-        target_date = datetime.strptime(user_text, "%d.%m.%Y")
-        today = datetime.now()
+        target_date_dt = datetime.strptime(user_text, "%d.%m.%Y") # Изменено имя переменной для ясности
+        # Для расчетов и хранения лучше использовать только дату, без времени, если оно не важно
+        target_date = target_date_dt.date()
+        today = datetime.now().date()
+
 
         # Расчеты
         days_left = (target_date - today).days
 
-        # Сохраняем дату в контексте
-        context.user_data['target_date'] = target_date
-        tz_str = context.user_data.get("tz", "UTC")
 
-        # сохраняем дату в iso-виде для последующих запусков
-        context.user_data["target_date_iso"] = target_date.date().isoformat()
+        # Сохраняем дату в контексте
+        # context.user_data['target_date'] = target_date # Сохраняем объект date
+        context.user_data['target_date_iso'] = target_date.isoformat() # Храним как строку ISO для PicklePersistence
+
+        tz_str = context.user_data.get("tz", "Europe/Moscow") # Пример, лучше брать из настроек пользователя или запрашивать
+
 
         # Ставим/переставляем ежедневный job
         reschedule_daily_job(context, update.effective_chat.id, target_date, tz_str)
+
 
         # Прогресс-бар (оценочный, без даты начала)
         progress_bar = create_progress_bar(days_left)
@@ -235,10 +278,11 @@ async def calculate_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 estimated_course = 4
 
             response = (
-                f"⭐️ КУРСАНТ! ⭐️\n\n"
+                f"⭐️ СВОДКА НА СЕГОДНЯ, КУРСАНТ! ⭐️\n\n"
                 f"ДО ВЫПУСКА: {days_left} ДНЕЙ\n"
                 f"{DIVIDER}\n"
                 f"ПРОГРЕСС ОБУЧЕНИЯ: {progress_bar}\n"
+                f"ПРЕДПОЛАГАЕМЫЙ КУРС: {estimated_course}\n"
                 f"{milestone_info}\n"
                 f"{DIVIDER}\n"
                 f"➤ {motivation}\n\n"
@@ -248,11 +292,12 @@ async def calculate_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             # Добавляем фразы для особых случаев
             if days_left == 100:
                 response += "\n\n💯 РОВНО 100 ДНЕЙ ДО ВЫПУСКА! ДЕРЖИТЕСЬ!"
-            elif days_left <= 30:
+            elif days_left <= 30 and days_left > 0 : # Добавил >0, чтобы не показывать для выпускников
                 response += f"\n\n🎖️ МЕНЬШЕ МЕСЯЦА ДО ПРИСВОЕНИЯ ЗВАНИЯ!"
             elif 60 <= days_left <= 70:
                 response += f"\n\n📚 ГОСЭКЗАМЕНЫ ПРИБЛИЖАЮТСЯ! БУДЬТЕ ГОТОВЫ!"
 
+        # Добавляем кнопки (без учебного плана и традиций)
         keyboard = [
             ['📊 ОБНОВИТЬ ДАННЫЕ'],
             ['🔄 ИЗМЕНИТЬ ДАТУ']
@@ -262,11 +307,11 @@ async def calculate_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Отправляем сообщение с результатом и кнопками
         await update.message.reply_text(response, reply_markup=reply_markup)
 
-        print(f"Отправлен ответ с расчетом дней пользователю {update.effective_user.id}")
+        logger.info(f"Отправлен ответ с расчетом дней пользователю {update.effective_user.id}")
         return MAIN_MENU
 
     except ValueError as e:
-        print(f"Ошибка формата даты от пользователя {update.effective_user.id}: {e}")
+        logger.error(f"Ошибка формата даты от пользователя {update.effective_user.id}: {e}", exc_info=True)
         await update.message.reply_text(
             "⚠️ ОШИБКА В ФОРМАТЕ ДАТЫ! ⚠️\n\n"
             "УКАЖИТЕ ДАТУ ВЫПУСКА В ФОРМАТЕ ДД.ММ.ГГГГ\n"
@@ -277,17 +322,24 @@ async def calculate_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def check_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обновляет информацию о днях до выпуска."""
-    print(f"Получена команда обновления данных от пользователя {update.effective_user.id}")
+    logger.info(f"Получена команда обновления данных от пользователя {update.effective_user.id}")
 
-    if 'target_date' not in context.user_data:
+    # if 'target_date' not in context.user_data: # Проверяем по ISO строке
+    if 'target_date_iso' not in context.user_data:
         await update.message.reply_text(
             "⚠️ НЕТ ДАННЫХ О ВЫПУСКЕ! ⚠️\n"
             "ИСПОЛЬЗУЙТЕ /start ДЛЯ ВВОДА ДАТЫ."
         )
-        return ConversationHandler.END
+        # Если ConversationHandler активен, но нет данных, лучше вернуть его в начало или текущее состояние,
+        # а не ConversationHandler.END, если это нежелательно.
+        # Но если мы в MAIN_MENU и данных нет, то можно и END.
+        # Для простоты, если вызвали check_days, а данных нет, это ошибка, можно и завершить.
+        return ConversationHandler.END # Или DATE_INPUT, если хотите сразу запросить дату
 
-    target_date = context.user_data['target_date']
-    today = datetime.now()
+    # target_date = context.user_data['target_date'] # Берем ISO строку и конвертируем
+    target_date = datetime.fromisoformat(context.user_data['target_date_iso']).date()
+    today = datetime.now().date()
+
 
     # Расчеты
     days_left = (target_date - today).days
@@ -304,7 +356,7 @@ async def check_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     # Добавляем случайную цитату
     quote = random.choice(MILITARY_QUOTES)
 
-    # Формируем ответ
+    # Формируем ответ (аналогично calculate_days)
     if days_left < 0:
         response = (
             f"⭐️ ДОКЛАДЫВАЮ! ⭐️\n\n"
@@ -338,7 +390,7 @@ async def check_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             estimated_course = 4
 
         response = (
-            f"⭐️ ОБНОВЛЕННЫЕ ДАННЫЕ! ⭐️\n\n"
+            f"⭐️ ОБНОВЛЕННЫЕ ДАННЫЕ, КУРСАНТ! ⭐️\n\n"
             f"ДО ВЫПУСКА: {days_left} ДНЕЙ\n"
             f"{DIVIDER}\n"
             f"ПРОГРЕСС ОБУЧЕНИЯ: {progress_bar}\n"
@@ -352,7 +404,7 @@ async def check_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         # Добавляем фразы для особых случаев
         if days_left == 100:
             response += "\n\n💯 РОВНО 100 ДНЕЙ ДО ВЫПУСКА! ДЕРЖИТЕСЬ!"
-        elif days_left <= 30:
+        elif days_left <= 30 and days_left > 0:
             response += f"\n\n🎖️ МЕНЬШЕ МЕСЯЦА ДО ПРИСВОЕНИЯ ЗВАНИЯ!"
         elif 60 <= days_left <= 70:
             response += f"\n\n📚 ГОСЭКЗАМЕНЫ ПРИБЛИЖАЮТСЯ! БУДЬТЕ ГОТОВЫ!"
@@ -365,16 +417,22 @@ async def check_days(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
     await update.message.reply_text(response, reply_markup=reply_markup)
-    print(f"Отправлены обновленные данные пользователю {update.effective_user.id}")
+    logger.info(f"Отправлены обновленные данные пользователю {update.effective_user.id}")
     return MAIN_MENU
 
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Сбрасывает данные и сразу начинает процесс заново."""
-    print(f"Получена команда сброса данных от пользователя {update.effective_user.id}")
+    logger.info(f"Получена команда сброса данных от пользователя {update.effective_user.id}")
 
     # Очищаем данные пользователя
     context.user_data.clear()
+
+    # Удаляем старый job, если он был
+    for old_job in context.job_queue.get_jobs_by_name(str(update.effective_chat.id)):
+        old_job.schedule_removal()
+        logger.info(f"Удален старый job для чата {update.effective_chat.id} при сбросе.")
+
 
     # Отправляем сообщение о сбросе и сразу запрашиваем новую дату
     await update.message.reply_text(
@@ -392,7 +450,7 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Отмена разговора."""
-    print(f"Получена команда отмены от пользователя {update.effective_user.id}")
+    logger.info(f"Получена команда отмены от пользователя {update.effective_user.id}")
     await update.message.reply_text("ОПЕРАЦИЯ ОТМЕНЕНА, КУРСАНТ!")
     return ConversationHandler.END
 
@@ -403,45 +461,61 @@ async def morning_message(context: ContextTypes.DEFAULT_TYPE):
     """
     job_data = context.job.data          # то, что мы передали при создании job
     chat_id   = job_data["chat_id"]
-    target_iso= job_data["target_date"]  # 'YYYY-MM-DD'
+    target_iso= job_data["target_date_iso"]  # 'YYYY-MM-DD'
     tz_str    = job_data["tz"]           # 'Europe/Moscow' и т.п.
 
-    target_date = datetime.fromisoformat(target_iso).date()
-    today       = datetime.now(ZoneInfo(tz_str)).date()
-    days_left   = (target_date - today).days
+    try:
+        target_date_obj = datetime.fromisoformat(target_iso).date() # Используем .date() для сравнения только дат
+        today       = datetime.now(ZoneInfo(tz_str)).date()
+        days_left   = (target_date_obj - today).days
 
-    if days_left < 0:
-        text = f"🎉 Доброе утро! Вы уже {abs(days_left)} дн. как офицер!"
-    elif days_left == 0:
-        text = "🏁 Доброе утро! Сегодня выпуск! Поздравляем! 🎓"
-    else:
-        text = f"🌞 Доброе утро! До выпуска осталось {days_left} дн."
+        if days_left < 0:
+            text = f"🎉 Доброе утро! Вы уже {abs(days_left)} дн. как офицер!"
+        elif days_left == 0:
+            text = "🏁 Доброе утро! Сегодня выпуск! Поздравляем! 🎓"
+        else:
+            text = f"🌞 Доброе утро! До выпуска осталось {days_left} дн."
 
-    await context.bot.send_message(chat_id=chat_id, text=text)
+        await context.bot.send_message(chat_id=chat_id, text=text)
+        logger.info(f"Утреннее сообщение отправлено в чат {chat_id}")
+    except Exception as e:
+        logger.error(f"Ошибка в morning_message для чата {chat_id}: {e}", exc_info=True)
+
 def reschedule_daily_job(context: ContextTypes.DEFAULT_TYPE,
                          chat_id: int,
-                         target_date: datetime,
-                         tz_str: str = "UTC",
-                         hour: int = 6, minute: int = 0):
+                         target_date_obj: datetime.date, # Принимаем объект date
+                         tz_str: str = "Europe/Moscow",  # Установите ваш часовой пояс по умолчанию
+                         hour: int = 7, minute: int = 0): # Изменено на 7 утра, как пример
     """
     Снимает старый job (если был) и ставит новый, который будет
     каждый день в <hour:minute> по tz_str слать morning_message.
     """
+    job_name = str(chat_id)
     # 1) удаляем существующие
-    for old in context.job_queue.get_jobs_by_name(str(chat_id)):
-        old.schedule_removal()
+    for old_job in context.job_queue.get_jobs_by_name(job_name):
+        old_job.schedule_removal()
+        logger.info(f"Удален предыдущий job '{job_name}'")
+
 
     # 2) ставим новый
+    # Убедимся, что target_date_obj это date, а не datetime
+    if isinstance(target_date_obj, datetime):
+        target_date_to_store = target_date_obj.date()
+    else:
+        target_date_to_store = target_date_obj
+
     context.job_queue.run_daily(
         morning_message,
         time=time(hour=hour, minute=minute, tzinfo=ZoneInfo(tz_str)),
-        name=str(chat_id),                       # чтобы легко найти/удалить
+        name=job_name,                       # чтобы легко найти/удалить
         data={
             "chat_id": chat_id,
-            "target_date": target_date.date().isoformat(),
+            "target_date_iso": target_date_to_store.isoformat(), # Храним ISO строку
             "tz": tz_str
         }
     )
+    logger.info(f"Ежедневный job '{job_name}' запланирован на {hour:02d}:{minute:02d} ({tz_str}) для даты {target_date_to_store.isoformat()}")
+
 
 def main():
     try:
@@ -450,12 +524,43 @@ def main():
 
         # 2. Если переменная не задана — бросаем исключение
         if not BOT_TOKEN:
+            logger.critical("Переменная окружения BOT_TOKEN не найдена!")
             raise RuntimeError("Переменная окружения BOT_TOKEN не найдена!")
 
-        # 3. Создаём приложение с полученным токеном
-        application = ApplicationBuilder().token(BOT_TOKEN).build()
+        # --- НОВЫЙ КОД: Запуск HTTP-сервера в отдельном потоке ---
+        health_thread = threading.Thread(target=run_health_check_server, daemon=True)
+        health_thread.start()
+        # --- КОНЕЦ НОВОГО КОДА ---
 
-        # --- дальше всё как было ---
+        # 3. Создаём приложение с полученным токеном
+        # Для Render и бесплатных тарифов PicklePersistence может быть ненадежен из-за эфемерной файловой системы.
+        # Убедитесь, что путь для файла персистентности доступен для записи.
+        # Можно указать /tmp/bot_persistence.pkl или подобный путь, но он будет временным.
+        # Для простоты и избежания проблем с правами, можно начать без persistence или использовать
+        # простой файл в текущей директории, понимая, что он может быть утерян.
+        persistence_path = "bot_data_persistence.pkl" # Убедитесь, что Render имеет право писать сюда
+                                                    # или измените на /tmp/bot_data_persistence.pkl
+        try:
+            # Попытка создать файл, чтобы проверить права на запись (можно удалить эту проверку потом)
+            with open(persistence_path, "ab") as f: # 'ab' - append binary, создаст если нет
+                pass
+            logger.info(f"PicklePersistence будет использовать файл: {os.path.abspath(persistence_path)}")
+        except IOError as e:
+            logger.warning(f"Не удалось получить доступ к файлу для PicklePersistence '{persistence_path}': {e}. "
+                           "Данные могут не сохраняться между перезапусками. "
+                           "Попробуйте указать путь типа '/tmp/bot_data_persistence.pkl' в PicklePersistence.")
+            # Если нет прав на запись, лучше не использовать PicklePersistence или он не будет работать
+            # persistence = None # Как вариант, если запись невозможна
+
+        my_persistence = PicklePersistence(filepath=persistence_path)
+
+        application = (
+            ApplicationBuilder()
+            .token(BOT_TOKEN)
+            .persistence(my_persistence)
+            .build()
+        )
+
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler("start", start)],
             states={
@@ -463,19 +568,27 @@ def main():
                 MAIN_MENU: [
                     MessageHandler(filters.Regex('^📊 ОБНОВИТЬ ДАННЫЕ$') | filters.Command("check"), check_days),
                     MessageHandler(filters.Regex('^🔄 ИЗМЕНИТЬ ДАТУ$'), reset),
-                    CommandHandler("reset", reset),
+                    CommandHandler("reset", reset), # Добавим /reset сюда тоже для прямого вызова
                 ],
             },
             fallbacks=[CommandHandler("cancel", cancel)],
+            name="graduation_counter_conversation", # Имя для ConversationHandler при использовании persistence
+            persistent=True # Включаем персистентность для ConversationHandler
         )
 
         application.add_handler(conv_handler)
+        # Можно добавить простой обработчик неизвестных команд вне диалога
+        async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="Извините, я не понимаю эту команду. Используйте /start")
+        application.add_handler(MessageHandler(filters.COMMAND, unknown))
 
-        print("Бот запущен! Нажмите Ctrl+C для остановки")
+
+        logger.info("Бот запускается...")
         application.run_polling()
 
     except Exception as e:
-        print(f"Произошла ошибка: {e}")
+        logger.critical(f"Критическая ошибка при запуске или работе бота: {e}", exc_info=True)
+        # Здесь можно добавить код для отправки уведомления администратору, если это необходимо
 
 
 if __name__ == "__main__":
