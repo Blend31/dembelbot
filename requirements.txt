@@ -1,0 +1,10 @@
+# Telegram-SDK (asyncio-вариант, нужен Python ≥ 3.10)
+python-telegram-bot==20.7
+
+# База часовых поясов. На многих slim-образах Linux файлов /usr/share/zoneinfo нет,
+# поэтому лучше явно установить tzdata, иначе ZoneInfo может не найти данные.
+tzdata>=2023.3
+
+# Если вдруг будете запускать на Python 3.8–3.9, раскомментируйте строку ниже —
+# она подтянет backport ZoneInfo.
+# backports.zoneinfo; python_version < "3.9"
