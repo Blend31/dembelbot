@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+import os
 from datetime import datetime, timedelta
 import random
 from telegram import Update, ReplyKeyboardMarkup
